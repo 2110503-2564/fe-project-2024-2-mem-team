@@ -1,88 +1,103 @@
-'use client'
-import React, { useEffect, useState } from 'react';
-import Image from 'next/image';
+import Image from "next/image";
+import getSpace from "@/libs/getSpace";
 import styles from './page.module.css';
-import getSpaces from '@/libs/getSpaces';
-import { Space } from "../../../interface";
-import Link from 'next/link';
-import { useSession } from "next-auth/react"; // Use useSession hook
-import getUserProfile from '@/libs/getUserProfile';
+import { Space, Review } from "../../../../interface";
+import getReviews from "@/libs/getReviews";
+import { getServerSession } from "next-auth";
+import { authOptions } from "../../api/auth/[...nextauth]/authOptions";
+import getUserProfile from "@/libs/getUserProfile";
 
-export default function Page() {
-  const { data: session } = useSession(); // Check session on the client side
-  const [workspaces, setWorkspaces] = useState<Space[]>([]);
-  const [profile, setProfile] = useState<any>(null);
+export default async function spaceDetailPage({params}:{params:{vid:string}}) {
 
-  useEffect(() => {
-    const fetchSpaces = async () => {
-      const spacesData = await getSpaces();
-      setWorkspaces(spacesData.data);
+    const session = await getServerSession(authOptions);
+    
+    // ตรวจสอบว่า session มีข้อมูลหรือไม่ ถ้าไม่มีให้แสดงข้อความ Please login
+    if (!session || !session.user.token) {
+        return (
+            <div className={styles.overlay}>
+                <div className={styles.container}>
+                    <h2>Please log in to view the details</h2>
+                </div>
+            </div>
+        );
+    }
 
-      if (session && session.user?.token) {
-        // Get profile only if the user is logged in
-        const profileData = await getUserProfile(session.user.token);
-        setProfile(profileData);
-      }
+    const Profile = await getUserProfile(session.user.token);
+    console.log(Profile.data._id);
+
+    const workspace: Space = await getSpace(params.vid);
+    let reviews: Review[] = [];
+
+    try {
+        reviews = await getReviews(params.vid);
+    } catch (error) {
+        console.error('Error fetching reviews:', error);
+    }
+
+    const handleEditReview = (reviewId: string) => {
+        // เพิ่มฟังก์ชันเพื่อแก้ไขรีวิว
+        console.log(`Editing review with ID: ${reviewId}`);
     };
 
-    fetchSpaces();
-  }, [session]); // Fetch spaces and profile only if the session changes
-
-  return (
-    <div className={styles.container}>
-      <div className={styles.welcomeSection}>
-        <Image
-          src="/Image/space.jpg"
-          alt="Welcome to Space"
-          width={1200}
-          height={450}
-          className={styles.welcomeImage}
-        />
-        <div className={styles.welcomeText}>
-          <h1>Find Your Perfect Workspace Today</h1>
-        </div>
-      </div>
-
-      {session && profile?.data?.role === 'admin' && (
-        <a href={`/space/create`}>
-          <button className={styles.createButton}>Create Space</button>
-        </a>
-      )}
-
-      <div className={styles.cardContainer}>
-        {workspaces.map((workspace: Space) => (
-          <div key={workspace.id} className={styles.card}>
-            <Link href={`/space/${workspace.id}`}>
-              <div>
+    return (
+        <div className={styles.overlay}>
+            <div className={styles.container}>
                 <Image
-                  src={workspace.picture}
-                  alt={workspace.name}
-                  width={500}
-                  height={300}
-                  className={styles.cardImg}
+                    src={workspace.data.picture} 
+                    alt="Welcome to Space"
+                    width={500}
+                    height={300}
+                    className={styles.welcomeImage}
                 />
-                <div className={styles.cardContent}>
-                  <div className={styles.cardTitle}>{workspace.name}</div>
-                  <div className={styles.cardRating}>
-                    Average Rating: {workspace.averageRating} ({workspace.reviews.length} Reviews)
-                  </div>
+                <div className={styles.Text}>
+                    <h2>{workspace.data.name}</h2>
+                    <h5>Address: {workspace.data.address}</h5>
+                    <h5>Telephone: {workspace.data.telephone}</h5>
+                    <h5>Open Time: {workspace.data.openTime}</h5>
+                    <h5>Close Time: {workspace.data.closeTime}</h5>
+                    <h5>Size: {workspace.data.size} m²</h5>
+                    <h5>Seats: {workspace.data.minSeats} - {workspace.data.maxSeats} people</h5>
+                    <a href={`${params.vid}/reservation`}>
+                        <div className={styles.Button}>Book Now</div>
+                    </a>
                 </div>
-              </div>
-            </Link>
+            </div>
 
-            {session && profile?.data?.role === 'admin' && (
-              <div className={styles.adminButtons}>
-                <Link href={`/space/${workspace.id}/update`}>
-                  <button className={styles.updateButton}>Update</button>
-                </Link>
-                <Link href={`/space/${workspace.id}/delete`}>
-                  <button className={styles.deleteButton}>Delete</button>
-                </Link>
-              </div>
-            )}
-          </div>
-        ))}
-      </div>
-    </div>
-  );
+            <div className={styles.containerHr}>
+                <hr className={styles.divider} />
+            </div>
+            <div className={styles.containerReviews}>
+                <div className={styles.HeaderText}>
+                    <h1>Reviews</h1>
+                    {reviews.length > 0 && (
+                        <div className={styles.averageRating}>
+                            <h4>Average Rating: {workspace.data.averageRating.toFixed(1)} ({reviews.length} Review{reviews.length > 1 ? 's' : ''})</h4>
+                        </div>
+                    )}
+                </div>
+                {reviews.length === 0 ? (
+                    <p>No reviews yet.</p>
+                ) : (
+                    reviews.map((review: Review) => (
+                        <div key={review._id} className={styles.reviewCard}>
+                            <div className={styles.reviewHeaderLeft}>
+                                <h3>{review.user.name}</h3>
+                            </div>
+                            <hr className={styles.separator} />
+                            <div className={styles.reviewContent}>
+                                <p>Rating: {review.rating}</p>
+                                <p>{review.comment}</p>
+                            </div>
+                            {/* เพิ่มเงื่อนไขเพื่อตรวจสอบว่ารีวิวเป็นของผู้ใช้ปัจจุบันหรือไม่ */}
+                            {Profile.data._id === review.user._id && (
+                                <a href={`/review/${review._id}`}>
+                                    <div className={styles.editButton}>Edit Review</div>
+                                </a>
+                            )}
+                        </div>
+                    ))
+                )}
+            </div>
+        </div>
+    );
 }
